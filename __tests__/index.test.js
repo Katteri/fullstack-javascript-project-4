@@ -51,7 +51,7 @@ test('downloadImgs', async () => {
     .reply(200, sourceHTML);
   let result;
 
-  await fsp.mkdtemp(path.join(tmpPath, filename.concat('_files')));
+  await fsp.mkdir(path.join(tmpPath, filename.concat('_files')), { recursive: true });
   await downloadImgs(sourceHTML, url, path.join(tmpPath, filename.concat('_files')))
     .then((html) => {
       result = html;

@@ -4,7 +4,7 @@
   "description": "[![Actions Status](https://github.com/Katteri/fullstack-javascript-project-4/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/Katteri/fullstack-javascript-project-4/actions)",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest"
   },
   "author": "Ekaterina Domashova",
   "license": "ISC",

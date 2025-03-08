@@ -59,7 +59,7 @@ test('downloadImgs', async () => {
 
   expect(imgScope.isDone()).toBeTruthy();
   expect(normalizeHtml(result)).toEqual(normalizeHtml(resultHTML));
-  
+
   const dirName = filename.concat('_files');
   const images = await fsp.readdir(path.join(tmpPath, dirName));
 

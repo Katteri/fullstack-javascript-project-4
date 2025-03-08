@@ -12,7 +12,7 @@ export function getFilename(url) {
 }
 
 export function downloadImgs(html, url, dirPath) {
-  const relativDir = dirPath.split('\\').at(-1);
+  const relativDir = path.basename(dirPath);
   const $ = cheerio.load(html);
 
   const downloadPromise = $('img').map((_, element) => {

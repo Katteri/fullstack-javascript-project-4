@@ -36,6 +36,8 @@ jobs:
       - run: make install
       - run: make lint
       - run: make test
+        env:
+          NODE_OPTIONS: "--experimental-vm-modules"
       - name: Test & publish code coverage
         # Publish code coverage on Code Climate
         # https://github.com/paambaati/codeclimate-action

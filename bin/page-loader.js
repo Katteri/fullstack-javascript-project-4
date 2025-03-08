@@ -10,7 +10,8 @@ program
   .arguments('<url>')
   .action((url) => {
     const options = program.opts();
-    downloadPage(url, options.output);
+    downloadPage(url, options.output)
+      .then(console.log);
   });
 
 program.parse();

@@ -50,6 +50,8 @@ test('downloadImgs', async () => {
     .get('/courses')
     .reply(200, sourceHTML);
   let result;
+
+  await fsp.mkdtemp(path.join(tmpPath, filename.concat('_files')));
   await downloadImgs(sourceHTML, url, path.join(tmpPath, filename.concat('_files')))
     .then((html) => {
       result = html;
@@ -57,11 +59,12 @@ test('downloadImgs', async () => {
 
   expect(imgScope.isDone()).toBeTruthy();
   expect(normalizeHtml(result)).toEqual(normalizeHtml(resultHTML));
-
+  
   const dirName = filename.concat('_files');
   const images = await fsp.readdir(path.join(tmpPath, dirName));
 
   expect(images).toContain(imgName);
+
   const resultImg = await fsp.readFile(path.join(tmpPath, dirName, imgName));
   expect(resultImg).toEqual(img);
 });

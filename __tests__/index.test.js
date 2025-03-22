@@ -1,107 +1,93 @@
-import fsp from 'fs/promises';
-import path from 'path';
+/* eslint-disable no-undef */
 import os from 'os';
 import nock from 'nock';
-import * as cheerio from 'cheerio';
 import { fileURLToPath } from 'url';
-import downloadPage, { getFilename, downloadImgs } from '../src/index.js';
+import path from 'path';
+import fsp from 'fs/promises';
+import downloadPage from '../src/index.js';
 
-const __filename = fileURLToPath(new URL(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const getFixturePath = (filename) => path.join(__dirname, '..', '__fixtures__', filename);
-const normalizeHtml = (html) => cheerio.load(html).html();
-const url = 'https://ru.hexlet.io/courses';
-const filename = 'ru-hexlet-io-courses';
-const imgName = 'ru-hexlet-io-assets-professions-nodejs.png';
-const imgPath = path.join(getFixturePath('assets-professions-nodejs.png'));
-const tmpPath = path.join(os.tmpdir(), 'page-loader-');
+const tmpFilePath = path.join(os.tmpdir());
+const getFixturePath = (name) => path.join(__dirname, '..', '__fixtures__', name);
 
-let sourceHTML;
-let sourceHTMLwithoutImg;
-let resultHTML;
-let img;
-let pageScope;
-let imgScope;
+let data;
+let changeData;
+let imagedata;
+let cssData;
+let jsData;
 
 nock.disableNetConnect();
 
 beforeAll(async () => {
-  sourceHTML = await fsp.readFile(path.join(getFixturePath('index.html')), 'utf-8');
-  sourceHTMLwithoutImg = await fsp.readFile(path.join(getFixturePath('index-without-img.html')), 'utf-8');
-  resultHTML = await fsp.readFile(path.join(getFixturePath('result.html')), 'utf-8');
-  img = await fsp.readFile(imgPath);
+  data = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-courses.html'), 'utf-8');
+  imagedata = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-assets-professions-nodejs.png'), 'utf-8');
+  changeData = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses.html')), 'utf-8');
+  cssData = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-assets-application.css'), 'utf-8');
+  jsData = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-packs-js-runtime.js'), 'utf-8');
 });
 
+afterAll(async () => {
+  await fsp.unlink(path.join(tmpFilePath, 'ru-hexlet-io-courses.html'));
+  await fsp.rm(path.join(tmpFilePath, 'ru-hexlet-io-courses_files'), { recursive: true, force: true });
+});
+
+let receivedDirname;
 beforeEach(async () => {
-  await fsp.mkdtemp(tmpPath);
-  nock.cleanAll();
-
-  imgScope = nock('https://ru.hexlet.io')
-    .get('/assets/professions/nodejs.png')
-    .reply(200, img);
+  receivedDirname = await fsp.mkdtemp(path.join(os.tmpdir(), 'page-loader-'));
 });
 
-test('getFilename', () => {
-  expect(getFilename(url)).toEqual(filename);
+describe('Positive download', () => {
+  test('Download page', async () => {
+    nock(/ru\.hexlet\.io/)
+      .get(/\/courses/)
+      .reply(200, data)
+      .get(/\/assets\/professions\/nodejs\.png/)
+      .reply(200, imagedata)
+      .get(/\/assets\/application\.css/)
+      .reply(200, cssData)
+      .get(/\/packs\/js\/runtime\.js/)
+      .reply(200, jsData)
+      .get(/\/courses/)
+      .reply(200, data);
+    const actualChangeData = changeData;
+    const actualImageData = imagedata;
+    const actualCssData = cssData;
+    const actualjsData = jsData;
+    await downloadPage('https://ru.hexlet.io/courses', tmpFilePath);
+    const expectedChangedata = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses.html'), 'utf-8');
+    const expectedJsData = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses_files', 'ru-hexlet-io-packs-js-runtime.js'), 'utf-8');
+    const expectedImageData = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses_files', 'ru-hexlet-io-assets-professions-nodejs.png'), 'utf-8');
+    const expectedCssData = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses_files', 'ru-hexlet-io-assets-application.css'), 'utf-8');
+    expect(expectedChangedata).toEqual(actualChangeData);
+    expect(expectedImageData).toEqual(actualImageData);
+    expect(expectedCssData).toEqual(actualCssData);
+    expect(expectedJsData).toEqual(actualjsData);
+  });
 });
 
-test('downloadImgs', async () => {
-  pageScope = nock('https://ru.hexlet.io')
-    .get('/courses')
-    .reply(200, sourceHTML);
-  let result;
+describe('Throwed exceptions', () => {
+  test('Http errors', async () => {
+    nock('https://foo.bar.baz')
+      .get(/no-response/)
+      .replyWithError('getaddrinfo ENOTFOUND foo.bar.baz')
+      .get(/404/)
+      .reply(404)
+      .get(/500/)
+      .reply(500);
 
-  await fsp.mkdir(path.join(tmpPath, filename.concat('_files')), { recursive: true });
-  await downloadImgs(sourceHTML, url, path.join(tmpPath, filename.concat('_files')))
-    .then((html) => {
-      result = html;
-    });
+    await expect(downloadPage('https://foo.bar.baz/no-response', receivedDirname)).rejects.toThrow('getaddrinfo ENOTFOUND foo.bar.baz');
+    await expect(downloadPage('https://foo.bar.baz/404', receivedDirname)).rejects.toThrow('Request failed with status code 404');
+    await expect(downloadPage('https://foo.bar.baz/500', receivedDirname)).rejects.toThrow('Request failed with status code 500');
+  });
 
-  expect(imgScope.isDone()).toBeTruthy();
-  expect(normalizeHtml(result)).toEqual(normalizeHtml(resultHTML));
+  test('Fs errors', async () => {
+    nock(/example.com/)
+      .get('/')
+      .twice()
+      .reply(200);
 
-  const dirName = filename.concat('_files');
-  const images = await fsp.readdir(path.join(tmpPath, dirName));
-
-  expect(images).toContain(imgName);
-
-  const resultImg = await fsp.readFile(path.join(tmpPath, dirName, imgName));
-  expect(resultImg).toEqual(img);
-});
-
-test('downloadPage: html with images', async () => {
-  pageScope = nock('https://ru.hexlet.io')
-    .get('/courses')
-    .reply(200, sourceHTML);
-
-  await downloadPage(url, tmpPath);
-
-  const files = await fsp.readdir(tmpPath);
-  const dirName = filename.concat('_files');
-  const fullFileName = filename.concat('.html');
-
-  expect(pageScope.isDone()).toBeTruthy();
-  expect(imgScope.isDone()).toBeTruthy();
-  expect(files).toContain(dirName);
-  expect(files).toContain(fullFileName);
-
-  const result = await fsp.readFile(path.join(tmpPath, fullFileName), 'utf-8');
-  expect(normalizeHtml(result)).toEqual(normalizeHtml(resultHTML));
-});
-
-test('downloadPage: html without images', async () => {
-  pageScope = nock('https://ru.hexlet.io')
-    .get('/courses')
-    .reply(200, sourceHTMLwithoutImg);
-
-  const files = await fsp.readdir(tmpPath);
-  const fullFileName = filename.concat('.html');
-
-  await downloadPage(url, tmpPath);
-  expect(pageScope.isDone()).toBeTruthy();
-  expect(imgScope.isDone()).toBeFalsy();
-  expect(files).toContain(fullFileName);
-
-  const result = await fsp.readFile(path.join(tmpPath, fullFileName), 'utf-8');
-  expect(normalizeHtml(result)).toEqual(normalizeHtml(sourceHTMLwithoutImg));
+    await expect(downloadPage('https://example.com', '/sys')).rejects.toThrow("EACCES: permission denied, mkdir '/sys/example-com_files'");
+    await expect(downloadPage('https://example.com', '/notExistingFolder')).rejects.toThrow("EACCES: permission denied, mkdir '/notExistingFolder'");
+  });
 });

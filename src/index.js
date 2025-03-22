@@ -1,61 +1,79 @@
+/* eslint-disable no-shadow */
+import axios from 'axios';
+import { cwd } from 'node:process';
 import fsp from 'fs/promises';
 import path from 'path';
-import axios from 'axios';
 import * as cheerio from 'cheerio';
+import axiosDebug from 'axios-debug-log';
+import debug from 'debug';
+import Listr from 'listr';
+import prettier from 'prettier';
+import {
+  nameChanger, normalizeName, getResoursesLinks, localizeLinks,
+} from './util.js';
 
-export function getFilename(url) {
-  const sourceURL = new URL(url);
-  const { protocol } = sourceURL;
-  const clearURL = sourceURL.toString().replace(`${protocol}//`, '');
-  const filename = clearURL.replace(/\W|_/g, '-');
-  return filename;
-}
+const log = debug('page-loader');
 
-export function downloadImgs(html, url, dirPath) {
-  const relativDir = path.posix.basename(dirPath);
-  const $ = cheerio.load(html);
+axiosDebug({
+  request(httpDebug, config) {
+    httpDebug(`Request ${config.url}`);
+  },
+  response(httpDebug, response) {
+    httpDebug(
+      `Response with ${response.headers['content-type']}`,
+      `from ${response.config.url}`,
+    );
+  },
+});
 
-  const downloadPromise = $('img').map((_, element) => {
-    const src = $(element).attr('src');
-    if (src && src.match(/\.jpg|\.png$/gi)) {
-      const link = new URL(src, url).href;
-      const extension = path.extname(link);
-      const imgName = getFilename(link.replace(extension, '')) + extension;
-      const relativPath = path.join(relativDir, imgName);
-      const absolutePath = path.join(dirPath, imgName);
+const downloadResourses = (downloadLink, dirPath, srcName, link) => {
+  const task = axios.get(downloadLink, { responseType: 'arraybuffer' })
+    .then(({ data }) => fsp.writeFile(path.join(dirPath, srcName), data));
+  log(`Download resourse from ${downloadLink.href}`);
+  return { title: link, task: () => task };
+};
 
-      $(element).attr('src', path.join(relativPath));
+const resourceProcessing = (filePath, url, fileName) => {
+  const dirName = `${fileName}_files`;
+  const dirPath = `${filePath}_files`;
+  const htmlFilePath = `${filePath}.html`;
+  const resourcesToLocalize = [];
+  let $;
+  return axios.get(url)
+    .then(({ data }) => {
+      $ = cheerio.load(data);
+      const linkForDownload = getResoursesLinks($, url);
+      if (linkForDownload.length === 0) {
+        console.error('No resourses for download');
+      }
+      const tasks = new Listr(
+        linkForDownload.map((link) => {
+          const downloadLink = new URL(link, url);
+          const srcName = normalizeName(downloadLink);
+          const relativePath = `${dirName}/${srcName}`;
+          resourcesToLocalize.push({ link, relativePath });
+          log(`Filename is ${srcName}`);
+          return downloadResourses(downloadLink.href, dirPath, srcName, link);
+        }),
+      );
+      return tasks.run();
+    })
+    .then(() => {
+      localizeLinks($, resourcesToLocalize);
+      log(`HTML filepath is ${htmlFilePath}`);
+      console.log(`Page was successfully downloaded into ${htmlFilePath}`);
+      return fsp.writeFile(htmlFilePath, prettier.format($.html(), { parser: 'html' }));
+    });
+};
 
-      return axios.get(link, { responseType: 'arraybuffer' })
-        .then((img) => fsp.writeFile(absolutePath, img.data));
-    }
-    return null;
-  }).get().filter(Boolean);
-
-  return Promise.all(downloadPromise)
-    .then(() => $.html());
-}
-
-function downloadPage(url, dir = process.cwd()) {
-  const filename = getFilename(url);
-  const filePath = path.join(dir, filename.concat('.html'));
-  const dirPath = path.join(dir, filename.concat('_files'));
-  return fsp.access(dir)
-    .catch(() => fsp.mkdir(dir, { recursive: true }))
-    .then(() => axios.get(url)
-      .then(({ data }) => {
-        if (cheerio.load(data)('img').length === 0) {
-          return fsp.writeFile(filePath, data, 'utf-8')
-            .then(() => filePath);
-        }
-        const mkdirPromise = fsp.mkdir(dirPath, { recursive: true });
-        const downloadPromise = downloadImgs(data, url, dirPath)
-          .then((html) => {
-            fsp.writeFile(filePath, html, 'utf-8');
-          });
-        return Promise.all([mkdirPromise, downloadPromise])
-          .then(() => filePath);
-      }));
-}
+const downloadPage = (url, filePath = cwd()) => {
+  const fileName = nameChanger(url);
+  const resultPath = path.join(filePath, fileName);
+  log(`Resultpath is ${resultPath}`);
+  return fsp.access(filePath)
+    .catch(() => fsp.mkdir(filePath, { recursive: true }))
+    .then(() => fsp.mkdir(`${resultPath}_files`, { recursive: true }))
+    .then(() => resourceProcessing(`${resultPath}`, url, fileName));
+};
 
 export default downloadPage;

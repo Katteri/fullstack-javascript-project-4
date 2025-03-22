@@ -1,7 +1,7 @@
 ### Hexlet tests and linter status:
-[![Actions Status](https://github.com/DanilCrazy99/fullstack-javascript-project-4/workflows/hexlet-check/badge.svg)](https://github.com/DanilCrazy99/fullstack-javascript-project-4/actions)
-[![Maintainability](https://api.codeclimate.com/v1/badges/e42c69c38b0775449bde/maintainability)](https://codeclimate.com/github/DanilCrazy99/fullstack-javascript-project-4/maintainability)
-[![Test Coverage](https://api.codeclimate.com/v1/badges/e42c69c38b0775449bde/test_coverage)](https://codeclimate.com/github/DanilCrazy99/fullstack-javascript-project-4/test_coverage)
+[![Test Coverage](https://api.codeclimate.com/v1/badges/122a79b0bd487cb32421/test_coverage)](https://codeclimate.com/github/Katteri/fullstack-javascript-project-4/test_coverage)
+[![Maintainability](https://api.codeclimate.com/v1/badges/122a79b0bd487cb32421/maintainability)](https://codeclimate.com/github/Katteri/fullstack-javascript-project-4/maintainability)
+[![Test Coverage](https://api.codeclimate.com/v1/badges/122a79b0bd487cb32421/test_coverage)](https://codeclimate.com/github/Katteri/fullstack-javascript-project-4/test_coverage)
 
 # Page Loader
 ## About

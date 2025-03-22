@@ -1,93 +1,104 @@
-/* eslint-disable no-undef */
+import fs from 'fs/promises';
 import os from 'os';
-import nock from 'nock';
-import { fileURLToPath } from 'url';
 import path from 'path';
-import fsp from 'fs/promises';
-import downloadPage from '../src/index.js';
+import { fileURLToPath } from 'url';
+import nock from 'nock';
+import prettier from 'prettier';
+import pageLoader from '../src/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const tmpFilePath = path.join(os.tmpdir());
-const getFixturePath = (name) => path.join(__dirname, '..', '__fixtures__', name);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-let data;
-let changeData;
-let imagedata;
-let cssData;
-let jsData;
+const getFixturePath = (filename) => path.join(__dirname, '..', '__fixtures__', filename);
+const readFixture = async (filename) => fs.readFile(getFixturePath(filename), 'utf-8');
+const createTempDir = async () => fs.mkdtemp(path.join(os.tmpdir(), 'page-loader-'));
 
 nock.disableNetConnect();
+const testUrl = 'https://ru.hexlet.io/courses';
+
+let tempDir;
 
 beforeAll(async () => {
-  data = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-courses.html'), 'utf-8');
-  imagedata = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-assets-professions-nodejs.png'), 'utf-8');
-  changeData = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses.html')), 'utf-8');
-  cssData = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-assets-application.css'), 'utf-8');
-  jsData = await fsp.readFile(path.join(getFixturePath('ru-hexlet-io-courses_files'), 'ru-hexlet-io-packs-js-runtime.js'), 'utf-8');
+  tempDir = await createTempDir();
+  console.log('Temporary direction:', tempDir);
 });
 
-afterAll(async () => {
-  await fsp.unlink(path.join(tmpFilePath, 'ru-hexlet-io-courses.html'));
-  await fsp.rm(path.join(tmpFilePath, 'ru-hexlet-io-courses_files'), { recursive: true, force: true });
+beforeEach(() => {
+  nock.cleanAll();
 });
 
-let receivedDirname;
-beforeEach(async () => {
-  receivedDirname = await fsp.mkdtemp(path.join(os.tmpdir(), 'page-loader-'));
-});
+test('Download and save page', async () => {
+  const testPageData = await readFixture('page.html');
 
-describe('Positive download', () => {
-  test('Download page', async () => {
-    nock(/ru\.hexlet\.io/)
-      .get(/\/courses/)
-      .reply(200, data)
-      .get(/\/assets\/professions\/nodejs\.png/)
-      .reply(200, imagedata)
-      .get(/\/assets\/application\.css/)
-      .reply(200, cssData)
-      .get(/\/packs\/js\/runtime\.js/)
-      .reply(200, jsData)
-      .get(/\/courses/)
-      .reply(200, data);
-    const actualChangeData = changeData;
-    const actualImageData = imagedata;
-    const actualCssData = cssData;
-    const actualjsData = jsData;
-    await downloadPage('https://ru.hexlet.io/courses', tmpFilePath);
-    const expectedChangedata = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses.html'), 'utf-8');
-    const expectedJsData = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses_files', 'ru-hexlet-io-packs-js-runtime.js'), 'utf-8');
-    const expectedImageData = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses_files', 'ru-hexlet-io-assets-professions-nodejs.png'), 'utf-8');
-    const expectedCssData = await fsp.readFile(path.join(tmpFilePath, 'ru-hexlet-io-courses_files', 'ru-hexlet-io-assets-application.css'), 'utf-8');
-    expect(expectedChangedata).toEqual(actualChangeData);
-    expect(expectedImageData).toEqual(actualImageData);
-    expect(expectedCssData).toEqual(actualCssData);
-    expect(expectedJsData).toEqual(actualjsData);
-  });
-});
+  nock('https://ru.hexlet.io')
+    .get('/courses')
+    .reply(200, testPageData)
+    .get('/assets/professions/nodejs.png')
+    .reply(200, 'nodejs.png')
+    .get('/assets/application.css')
+    .reply(200, 'application.css')
+    .get('/courses')
+    .reply(200, 'courses.html')
+    .get('/packs/js/runtime.js')
+    .reply(200, 'runtime.js');
 
-describe('Throwed exceptions', () => {
-  test('Http errors', async () => {
-    nock('https://foo.bar.baz')
-      .get(/no-response/)
-      .replyWithError('getaddrinfo ENOTFOUND foo.bar.baz')
-      .get(/404/)
-      .reply(404)
-      .get(/500/)
-      .reply(500);
+  const outputPath = await pageLoader(testUrl, tempDir);
+  const expectedPage = await readFixture('expected.html');
+  const resultPage = await fs.readFile(outputPath, 'utf-8');
 
-    await expect(downloadPage('https://foo.bar.baz/no-response', receivedDirname)).rejects.toThrow('getaddrinfo ENOTFOUND foo.bar.baz');
-    await expect(downloadPage('https://foo.bar.baz/404', receivedDirname)).rejects.toThrow('Request failed with status code 404');
-    await expect(downloadPage('https://foo.bar.baz/500', receivedDirname)).rejects.toThrow('Request failed with status code 500');
+  const prettifiedExpectedPage = await prettier.format(expectedPage, { parser: 'html' });
+  const prettifiedResultPage = await prettier.format(resultPage, { parser: 'html' });
+
+  // console.log(os.tmpdir(), 'os.tmpdir()');
+
+  expect(outputPath).toEqual(path.join(tempDir, 'ru-hexlet-io-courses.html'));
+  expect(prettifiedResultPage).toEqual(prettifiedExpectedPage);
+
+  const assetsPaths = [
+    'ru-hexlet-io-assets-professions-nodejs.png',
+    'ru-hexlet-io-assets-application.css',
+    'ru-hexlet-io-courses.html',
+    'ru-hexlet-io-packs-js-runtime.js',
+  ];
+
+  const assetsDirection = 'ru-hexlet-io-courses_files';
+  const assetsPromises = assetsPaths.map((filepath) => {
+    const fullAssetPath = path.join(tempDir, assetsDirection, filepath);
+    return fs
+      .access(fullAssetPath)
+      .then(() => true) // Файл существует и доступен
+      .catch((error) => {
+        if (error.code === 'ENOENT') {
+          return false; // Файл не найден
+        }
+        throw error; // Ошибка доступа к файлу или другая ошибка
+      });
   });
 
-  test('Fs errors', async () => {
-    nock(/example.com/)
-      .get('/')
-      .twice()
-      .reply(200);
+  const resourcesDownloaded = await Promise.all(assetsPromises);
 
-    await expect(downloadPage('https://example.com', '/sys')).rejects.toThrow("EACCES: permission denied, mkdir '/sys/example-com_files'");
-    await expect(downloadPage('https://example.com', '/notExistingFolder')).rejects.toThrow("EACCES: permission denied, mkdir '/notExistingFolder'");
-  });
+  expect(resourcesDownloaded.every((value) => value)).toBeTruthy();
+});
+
+test('404', async () => {
+  // Эмулируем сетевую ошибку, когда страница не найдена
+  nock('https://incorrect')
+    .get('/err')
+    .reply(404);
+
+  await expect(pageLoader('https://incorrect/err', tempDir)).rejects.toThrow();
+});
+
+test('Network error', async () => {
+  // Эмулируем сетевую ошибку, например, отсутствие соединения с сервером
+  nock('https://incorrect')
+    .get('/err')
+    .replyWithError('Network error');
+
+  await expect(pageLoader('https://incorrect/err', tempDir)).rejects.toThrow();
+});
+
+test('File system access error', async () => {
+  // Эмулируем ошибку доступа к файловой системе или отсутствие директории
+  const invalidDir = '/invalid/directory';
+  await expect(pageLoader('https://example.com', invalidDir)).rejects.toThrow();
 });

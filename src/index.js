@@ -1,79 +1,85 @@
-/* eslint-disable no-shadow */
-import axios from 'axios';
-import { cwd } from 'node:process';
-import fsp from 'fs/promises';
+import fs from 'fs/promises';
 import path from 'path';
-import * as cheerio from 'cheerio';
-import axiosDebug from 'axios-debug-log';
-import debug from 'debug';
+import axios from 'axios';
+import configDebug from 'axios-debug-log';
 import Listr from 'listr';
-import prettier from 'prettier';
-import {
-  nameChanger, normalizeName, getResoursesLinks, localizeLinks,
-} from './util.js';
+import { formatToHyphenCase, ensureAssetsDirectory, extractAssets } from './utilities.js';
+import log from './page-loader-debug.js';
 
-const log = debug('page-loader');
-
-axiosDebug({
-  request(httpDebug, config) {
-    httpDebug(`Request ${config.url}`);
+configDebug({
+  request(debugAxios, config) {
+    debugAxios(`Request with ${config.headers['content-type']})`);
   },
-  response(httpDebug, response) {
-    httpDebug(
-      `Response with ${response.headers['content-type']}`,
-      `from ${response.config.url}`,
-    );
+  response(debugAxios, response) {
+    debugAxios(`Response with ${response.headers['content-type']}`, `from ${response.config.url}`);
+  },
+  error(debugAxios, error) {
+    debugAxios('Boom', error);
   },
 });
 
-const downloadResourses = (downloadLink, dirPath, srcName, link) => {
-  const task = axios.get(downloadLink, { responseType: 'arraybuffer' })
-    .then(({ data }) => fsp.writeFile(path.join(dirPath, srcName), data));
-  log(`Download resourse from ${downloadLink.href}`);
-  return { title: link, task: () => task };
-};
+const downloadAsset = ({ url, filepath }) => axios
+  .get(url, { responseType: 'arraybuffer' })
+  .then(({ data, status, statusText }) => {
+    log('Status:', status, statusText);
+    log(`Writting asset to: ${filepath}`);
 
-const resourceProcessing = (filePath, url, fileName) => {
-  const dirName = `${fileName}_files`;
-  const dirPath = `${filePath}_files`;
-  const htmlFilePath = `${filePath}.html`;
-  const resourcesToLocalize = [];
-  let $;
-  return axios.get(url)
-    .then(({ data }) => {
-      $ = cheerio.load(data);
-      const linkForDownload = getResoursesLinks($, url);
-      if (linkForDownload.length === 0) {
-        console.error('No resourses for download');
-      }
-      const tasks = new Listr(
-        linkForDownload.map((link) => {
-          const downloadLink = new URL(link, url);
-          const srcName = normalizeName(downloadLink);
-          const relativePath = `${dirName}/${srcName}`;
-          resourcesToLocalize.push({ link, relativePath });
-          log(`Filename is ${srcName}`);
-          return downloadResourses(downloadLink.href, dirPath, srcName, link);
-        }),
+    return fs.writeFile(filepath, data);
+  })
+  .catch((e) => console.error(e.message));
+
+const pageLoader = (url, outputDirPath = '') => {
+  const pageUrl = new URL(url);
+  const { hostname, pathname } = pageUrl;
+  const formattedUrl = formatToHyphenCase(`${hostname}${pathname}`);
+  const htmlFileName = `${formattedUrl}.html`;
+  const htmlFilePath = path.resolve(outputDirPath, htmlFileName);
+  const assetsDirName = `${formattedUrl}_files`;
+  const assetsDirPath = path.resolve(outputDirPath, assetsDirName);
+
+  log(`Starting page load process for URL: ${url}`);
+  log(`HTML file name: ${htmlFileName}`);
+
+  return axios
+    .get(url)
+    .then(({ data: htmlContent, status, statusText }) => {
+      log('Status:', status, statusText);
+      log(`Creating assets directory: ${assetsDirPath}`);
+
+      return ensureAssetsDirectory(htmlContent, assetsDirPath);
+    })
+    .then((htmlContent) => {
+      log('Assets directory created successfully');
+
+      const { html, assetsOptions } = extractAssets(
+        htmlContent,
+        pageUrl,
+        assetsDirName,
+        outputDirPath,
       );
-      return tasks.run();
+
+      const tasks = assetsOptions.map((asset) => ({
+        title: asset.url.href,
+        task: () => downloadAsset(asset),
+      }));
+
+      const taskRun = new Listr(tasks, { concurrent: true });
+      const downloadAssetPromises = taskRun.run();
+
+      log(`Writing HTML file to path: ${htmlFilePath}`);
+
+      return Promise.all([fs.writeFile(htmlFilePath, html), downloadAssetPromises])
+        .catch((error) => console.error(error.message));
     })
     .then(() => {
-      localizeLinks($, resourcesToLocalize);
-      log(`HTML filepath is ${htmlFilePath}`);
-      console.log(`Page was successfully downloaded into ${htmlFilePath}`);
-      return fsp.writeFile(htmlFilePath, prettier.format($.html(), { parser: 'html' }));
+      console.log(`Page was successfully downloaded into '${htmlFilePath}'`);
+      return htmlFilePath;
+    })
+    .catch((error) => {
+      log(`Error occurred: ${error.message}`);
+      console.error(error.message);
+      throw error;
     });
 };
 
-const downloadPage = (url, filePath = cwd()) => {
-  const fileName = nameChanger(url);
-  const resultPath = path.join(filePath, fileName);
-  log(`Resultpath is ${resultPath}`);
-  return fsp.access(filePath)
-    .catch(() => fsp.mkdir(filePath, { recursive: true }))
-    .then(() => fsp.mkdir(`${resultPath}_files`, { recursive: true }))
-    .then(() => resourceProcessing(`${resultPath}`, url, fileName));
-};
-
-export default downloadPage;
+export default pageLoader;

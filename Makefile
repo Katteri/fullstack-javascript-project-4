@@ -1,14 +1,23 @@
-install:	#Установка пакетов
+install: 
 	npm ci
 
-link:		#Линк пакетов
-	sudo npm link
-
-publish:	#Проверка публикации
+publish:
 	npm publish --dry-run
 
-lint:		#Проверка линтером
+lint:
 	npx eslint .
+	
+lint-fix:
+	npx eslint --fix .
 
-jest:		#Запуск тестов
+test:
+	NODE_OPTIONS=--experimental-vm-modules npx jest
+
+test-coverage:
 	NODE_OPTIONS=--experimental-vm-modules npx jest --coverage
+
+watch:
+	NODE_OPTIONS=--experimental-vm-modules npx jest --watch
+
+nockdebug:
+	DEBUG=nock.* NODE_OPTIONS=--experimental-vm-modules npx jest

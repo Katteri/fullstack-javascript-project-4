@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 
 const formatToHyphenCase = (string) => string.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').replace(/[^a-zA-Z0-9]+/g, '-');
 

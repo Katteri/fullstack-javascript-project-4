@@ -1,44 +1,43 @@
 {
-  "name": "@hexlet/code",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "[![Actions Status](https://github.com/kpako3rbp/fullstack-javascript-project-4/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/kpako3rbp/fullstack-javascript-project-4/actions)",
-  "bin": {
-    "page-loader": "bin/page-loader.js"
-  },
-  "main": "src/index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/kpako3rbp/fullstack-javascript-project-4.git"
-  },
-  "author": "kpako3rbp",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/kpako3rbp/fullstack-javascript-project-4/issues"
-  },
-  "homepage": "https://github.com/kpako3rbp/fullstack-javascript-project-4#readme",
-  "devDependencies": {
-    "@babel/core": "^7.23.7",
-    "@babel/preset-env": "^7.23.8",
-    "babel-jest": "^29.7.0",
-    "coverage": "^0.0.0",
-    "eslint": "^8.22.0",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-plugin-import": "^2.26.0",
-    "eslint-plugin-jest": "^26.5.3",
-    "jest": "^28.1.2",
-    "nock": "^13.5.0"
-  },
-  "dependencies": {
-    "axios": "^1.6.7",
-    "axios-debug-log": "^1.0.0",
-    "cheerio": "^1.0.0-rc.12",
-    "commander": "^11.1.0",
-    "debug": "^4.3.4",
-    "listr": "^0.14.3",
-    "prettier": "^3.2.4"
-  }
+	"name": "@hexlet/code",
+	"version": "1.0.0",
+	"description": "CLI page loader",
+	"main": "./src/index.js",
+	"type": "module",
+	"scripts": {
+		"test": "node --experimental-vm-modules node_modules/jest/bin/jest.js ./__tests__/",
+		"test-coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
+	},
+	"jest": {
+		"testEnvironment": "node",
+		"transformIgnorePatterns": [
+			"node_modules/(?!troublesome-dependency/.*)"
+		]
+	},
+	"bin": {
+		"page-loader": "./bin/pageLoader.js"
+	},
+	"author": "ggrelaxi",
+	"license": "ISC",
+	"devDependencies": {
+		"@types/jest": "^26.0.23",
+		"debug": "^4.3.1",
+		"eslint": "^8.43.0",
+		"eslint-config-airbnb-base": "^14.2.1",
+		"eslint-plugin-import": "^2.23.4",
+		"eslint-plugin-jest": "^26.3.6",
+		"jest": "^29.5.0",
+		"jest-cli": "^27.0.3",
+		"jest-environment-node": "^28.1.1",
+		"nock": "^13.3.1",
+		"prettier": "^2.3.0"
+	},
+	"dependencies": {
+		"@jest/globals": "^29.7.0",
+		"axios": "^1.4.0",
+		"cheerio": "^1.0.0-rc.12",
+		"commander": "^11.0.0",
+		"debug": "^4.3.4",
+		"listr": "^0.14.3"
+	}
 }

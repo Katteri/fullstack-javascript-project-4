@@ -1,23 +1,12 @@
-install: 
-	npm ci
-
-publish:
-	npm publish --dry-run
-
+install:
+	npm install --force
 lint:
 	npx eslint .
-	
-lint-fix:
-	npx eslint --fix .
-
+link:
+	npm link
 test:
-	NODE_OPTIONS=--experimental-vm-modules npx jest
-
+	npm test
 test-coverage:
-	NODE_OPTIONS=--experimental-vm-modules npx jest --coverage
-
-watch:
-	NODE_OPTIONS=--experimental-vm-modules npx jest --watch
-
-nockdebug:
-	DEBUG=nock.* NODE_OPTIONS=--experimental-vm-modules npx jest
+	npm test -- --coverage --coverageProvider=v8
+test1:
+	node --experimental-vm-modules node_modules/jest/bin/jest.js ./js_l3_page_loader3_project-main 2/__tests__/20-index.test.js

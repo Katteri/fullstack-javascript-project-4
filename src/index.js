@@ -1,85 +1,91 @@
-import fs from 'fs/promises';
-import path from 'path';
+import process from 'node:process';
 import axios from 'axios';
-import configDebug from 'axios-debug-log';
+import fs from 'fs/promises';
+import path from 'node:path';
+import * as cheerio from 'cheerio';
+import debug from 'debug';
 import Listr from 'listr';
-import { formatToHyphenCase, ensureAssetsDirectory, extractAssets } from './utilities.js';
-import log from './page-loader-debug.js';
 
-configDebug({
-  request(debugAxios, config) {
-    debugAxios(`Request with ${config.headers['content-type']})`);
-  },
-  response(debugAxios, response) {
-    debugAxios(`Response with ${response.headers['content-type']}`, `from ${response.config.url}`);
-  },
-  error(debugAxios, error) {
-    debugAxios('Boom', error);
-  },
-});
+import { urlToFilename, urlToDirname } from './utils/index.js';
 
-const downloadAsset = ({ url, filepath }) => axios
-  .get(url, { responseType: 'arraybuffer' })
-  .then(({ data, status, statusText }) => {
-    log('Status:', status, statusText);
-    log(`Writting asset to: ${filepath}`);
+const log = debug('page-loader');
 
-    return fs.writeFile(filepath, data);
-  })
-  .catch((e) => console.error(e.message));
+const sourceAttrs = {
+  link: 'href',
+  script: 'src',
+  img: 'src',
+};
 
-const pageLoader = (url, outputDirPath = '') => {
-  const pageUrl = new URL(url);
-  const { hostname, pathname } = pageUrl;
-  const formattedUrl = formatToHyphenCase(`${hostname}${pathname}`);
-  const htmlFileName = `${formattedUrl}.html`;
-  const htmlFilePath = path.resolve(outputDirPath, htmlFileName);
-  const assetsDirName = `${formattedUrl}_files`;
-  const assetsDirPath = path.resolve(outputDirPath, assetsDirName);
+const prepareAssets = (html, origin, assetsDir) => {
+  const cheerioData = cheerio.load(html);
+  const assets = [];
 
-  log(`Starting page load process for URL: ${url}`);
-  log(`HTML file name: ${htmlFileName}`);
+  Object.entries(sourceAttrs).forEach(([tag, attr]) => {
+    const tags = cheerioData(tag).toArray();
+
+    tags.map((tagItem) => cheerioData(tagItem))
+      .filter((cheerioTag) => cheerioTag.attr(attr))
+      .filter((filteredTag) => new URL(filteredTag.attr(attr), origin).origin === origin)
+      .forEach((resultedTag) => {
+        const url = new URL(resultedTag.attr(attr), origin);
+        const filename = urlToFilename(`${url.hostname}${url.pathname}`);
+        const filepath = path.join(assetsDir, filename);
+        assets.push({ url, filename });
+        resultedTag.attr(attr, filepath);
+      });
+  });
+  return { html: cheerioData.html(), assets };
+};
+
+const downloadAsset = async (dirname, asset) => {
+  const { url, filename } = asset;
+  return axios.get(url.toString(), { responseType: 'arraybuffer' }).then((response) => {
+    const assetPath = path.join(dirname, filename);
+    return fs.writeFile(assetPath, response.data);
+  });
+};
+
+const pageLoader = (pageUrl, outputDir = '') => {
+  log('url', pageUrl);
+  log('output directory', outputDir);
+  const url = new URL(pageUrl);
+  const slug = `${url.hostname}${url.pathname}`;
+  const mainFile = urlToFilename(slug);
+  const mainFileExtension = path.extname(mainFile) === '.html' ? '' : '.html';
+  const pathToProjectDir = path.resolve(process.cwd(), outputDir);
+  const pathToMainFile = path.join(pathToProjectDir, `${mainFile}${mainFileExtension}`);
+  const assetsDirname = urlToDirname(slug);
+  const assetsDirPath = path.join(pathToProjectDir, assetsDirname);
+
+  let siteData;
 
   return axios
-    .get(url)
-    .then(({ data: htmlContent, status, statusText }) => {
-      log('Status:', status, statusText);
-      log(`Creating assets directory: ${assetsDirPath}`);
+    .get(pageUrl)
+    .then(({ data }) => {
+      siteData = prepareAssets(data, url.origin, assetsDirname);
 
-      return ensureAssetsDirectory(htmlContent, assetsDirPath);
-    })
-    .then((htmlContent) => {
-      log('Assets directory created successfully');
-
-      const { html, assetsOptions } = extractAssets(
-        htmlContent,
-        pageUrl,
-        assetsDirName,
-        outputDirPath,
-      );
-
-      const tasks = assetsOptions.map((asset) => ({
-        title: asset.url.href,
-        task: () => downloadAsset(asset),
-      }));
-
-      const taskRun = new Listr(tasks, { concurrent: true });
-      const downloadAssetPromises = taskRun.run();
-
-      log(`Writing HTML file to path: ${htmlFilePath}`);
-
-      return Promise.all([fs.writeFile(htmlFilePath, html), downloadAssetPromises])
-        .catch((error) => console.error(error.message));
+      return fs.access(assetsDirPath).catch(() => {
+        log(`create assets directory - ${assetsDirPath}`);
+        return fs.mkdir(assetsDirPath);
+      });
     })
     .then(() => {
-      console.log(`Page was successfully downloaded into '${htmlFilePath}'`);
-      return htmlFilePath;
+      log('Try to write main file');
+      return fs.writeFile(pathToMainFile, siteData.html);
     })
-    .catch((error) => {
-      log(`Error occurred: ${error.message}`);
-      console.error(error.message);
-      throw error;
-    });
+    .then(() => {
+      const tasks = siteData.assets.map((asset) => {
+        log('asset', asset.url);
+        return {
+          title: asset.url.toString(),
+          task: () => downloadAsset(assetsDirPath, asset),
+        };
+      });
+
+      const listr = new Listr(tasks, { concurrent: true });
+      return listr.run();
+    })
+    .then(() => pathToMainFile);
 };
 
 export default pageLoader;
